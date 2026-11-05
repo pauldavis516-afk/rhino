@@ -2519,10 +2519,12 @@ inline LoweredProgram LowerToMaxwellWith(std::span<const Instruction> code, u32 
                     source_b + 1 >= register_limit || (dest != 255 && dest + 1 >= register_limit) ||
                     (second_dest != 255 && second_dest + 1 >= register_limit))
                     return fail(index, "native per-tap gather operands");
-                // The backward scan below is only sound for straight-line programs: every
-                // instruction up to the terminal EXIT must be one of these non-branching forms.
-                // A failed proof reports the instruction that broke it (not the gather), so the
-                // log names the opcode to support next.
+                // The backward scan below is only sound for straight-line programs: no
+                // control-flow instruction (the 0x140-0x15f family: branches, calls, returns,
+                // reconvergence, discard, conditional exits) may come before the terminal EXIT.
+                // Ocarina's per-tap compute programs open with S2R and ULDC, which the old
+                // allow-list of 13 opcodes rejected. A failed proof reports the instruction that
+                // broke it (not the gather), so the log names the opcode.
                 bool terminal = false;
                 for (u32 scan = 0; scan < code.size(); ++scan) {
                     const auto& instruction = code[scan];
@@ -2533,9 +2535,7 @@ inline LoweredProgram LowerToMaxwellWith(std::span<const Instruction> code, u32 
                         terminal = true;
                         break;
                     }
-                    if (op != 0x326 && op != 0x802 && op != 0x307 && op != 0x421 &&
-                        op != 0xa20 && op != 0xb63 && op != 0x221 && op != 0x823 &&
-                        op != 0x423 && op != 0x223 && op != 0x308 && op != 0x220 && op != 0x820)
+                    if ((op & 0x1ff) >= 0x140 && (op & 0x1ff) <= 0x15f)
                         return fail(scan, "native per-tap gather control-flow proof");
                 }
                 if (!terminal) return fail(index, "native per-tap gather terminal proof");
@@ -2557,8 +2557,20 @@ inline LoweredProgram LowerToMaxwellWith(std::span<const Instruction> code, u32 
                         }
                         continue;
                     }
-                    if (op != 0x802 && op != 0x307 && op != 0x421 && op != 0xa20)
-                        return fail(cursor, "native per-tap gather offset proof");
+                    // ULDC (0xab9, 0xabb) writes a uniform register, never Rb or Rb+1.
+                    if (op == 0xab9 || op == 0xabb) continue;
+                    if (op != 0x802 && op != 0x307 && op != 0x421 && op != 0xa20) {
+                        // Any other instruction must have known register writes that miss the
+                        // offsets still being looked for; an unknown one fails the proof.
+                        const auto count = write_count(definition);
+                        if (!count) return fail(cursor, "native per-tap gather offset proof");
+                        for (u32 i = 0; i < 2; ++i) {
+                            const u32 reg = source_b + i;
+                            if (!packed_offsets[i] && *count && reg >= target && reg < target + *count)
+                                return fail(cursor, "native per-tap gather nonconstant offsets");
+                        }
+                        continue;
+                    }
                     for (u32 i = 0; i < 2; ++i) {
                         if (packed_offsets[i] || target != source_b + i) continue;
                         if (op != 0x802 || definition.Bits(12, 4) != 7 || definition.Bits(24, 8) ||
