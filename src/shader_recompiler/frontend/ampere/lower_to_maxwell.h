@@ -2519,31 +2519,21 @@ inline LoweredProgram LowerToMaxwellWith(std::span<const Instruction> code, u32 
                     source_b + 1 >= register_limit || (dest != 255 && dest + 1 >= register_limit) ||
                     (second_dest != 255 && second_dest + 1 >= register_limit))
                     return fail(index, "native per-tap gather operands");
-                // The backward scan below is only sound for straight-line programs: no
-                // control-flow instruction (the 0x140-0x15f family: branches, calls, returns,
-                // reconvergence, discard, conditional exits) may come before the terminal EXIT.
-                // Ocarina's per-tap compute programs open with S2R and ULDC, which the old
-                // allow-list of 13 opcodes rejected. A failed proof reports the instruction that
-                // broke it (not the gather), so the log names the opcode.
-                bool terminal = false;
-                for (u32 scan = 0; scan < code.size(); ++scan) {
-                    const auto& instruction = code[scan];
-                    if (instruction.Bits(12, 4) == 15) continue;
-                    const u32 op = instruction.Bits(0, 12);
-        uses_uniform_bank |= op == 0x83b && instruction.Bits(91, 1);
-                    if (op == 0x94d && instruction.Bits(12, 4) == 7) {
-                        terminal = true;
-                        break;
-                    }
-                    if ((op & 0x1ff) >= 0x140 && (op & 0x1ff) <= 0x15f)
-                        return fail(scan, "native per-tap gather control-flow proof");
-                }
-                if (!terminal) return fail(index, "native per-tap gather terminal proof");
+                // The backward scan below must stay inside the gather's basic block. With every
+                // branch target known (bounded_control: BRA, BSSY, CALL returns), the scan stops
+                // at the first target it reaches, so each offset definition it finds runs before
+                // the gather on every path. Ocarina's per-tap compute programs have a BSSY region
+                // and an early @P0 EXIT, which the old straight-line proof rejected; control-flow
+                // instructions inside the block write no general register and are skipped. A
+                // failed proof reports the instruction that broke it, not the gather.
+                if (!bounded_control) return fail(index, "native per-tap gather control-flow proof");
                 std::array<std::optional<u32>, 2> packed_offsets;
                 for (u32 cursor = index; cursor > 0 && (!packed_offsets[0] || !packed_offsets[1]);) {
+                    if (control_entries[cursor]) return fail(cursor, "native per-tap gather control-flow proof");
                     const auto& definition = code[--cursor];
                     if (definition.Bits(12, 4) == 15) continue;
                     const u32 op = definition.Bits(0, 12), target = definition.Bits(16, 8);
+                    if ((op & 0x1ff) >= 0x140 && (op & 0x1ff) <= 0x15f) continue;
                     if (op == 0xb63) {
                         const u32 count = static_cast<u32>(std::popcount(definition.Bits(72, 4)));
                         const u32 high = definition.Bits(64, 8);
