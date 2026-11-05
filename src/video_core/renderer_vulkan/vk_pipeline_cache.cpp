@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -1091,6 +1092,26 @@ GraphicsPipeline* PipelineCache::BuiltPipeline(GraphicsPipeline* pipeline) const
                                               draw_state.draw_element_count,
                                               draw_state.draw_element_count);
     return discard ? nullptr : pipeline;
+}
+
+// Native (Switch 2) draws wait for a pipeline still being built (BuiltPipeline keeps them, as they
+// can write resources later frames read). In new scenery those waits stall the game; with
+// EDEN_NX2_ASYNC_SKIP=1 and asynchronous shaders on, a native draw the legacy heuristic would
+// discard is skipped for this frame instead (from selevet-eglantine's performance build 4).
+// Off by default: a skipped draw can leave a persistent buffer (shadow map, fog volume) a frame
+// behind.
+bool PipelineCache::SkipUnbuiltNativeDraw(const GraphicsPipeline* pipeline) const noexcept {
+    static const bool enabled = [] {
+        const char* value = std::getenv("EDEN_NX2_ASYNC_SKIP");
+        return value != nullptr && value[0] == '1';
+    }();
+    if (!enabled || !use_asynchronous_shaders || pipeline->IsBuilt() ||
+        !maxwell3d->GetNativeMacroEngine().native_turing) {
+        return false;
+    }
+    const auto& draw_state = maxwell3d->draw_manager.draw_state;
+    return CanDiscardPendingDraw(false, maxwell3d->regs.zeta_enable != 0,
+                                 draw_state.draw_element_count, draw_state.draw_element_count);
 }
 
 std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(

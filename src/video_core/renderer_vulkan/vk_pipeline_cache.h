@@ -133,6 +133,10 @@ public:
     void LoadDiskResources(u64 title_id, std::stop_token stop_loading,
                            const VideoCore::DiskResourceLoadCallback& callback);
 
+    /// EDEN_NX2_ASYNC_SKIP=1: whether a native draw whose pipeline is still being built is skipped
+    /// for this frame instead of waited for.
+    [[nodiscard]] bool SkipUnbuiltNativeDraw(const GraphicsPipeline* pipeline) const noexcept;
+
 private:
     [[nodiscard]] GraphicsPipeline* CurrentGraphicsPipelineSlowPath();
 

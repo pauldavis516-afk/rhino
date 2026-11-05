@@ -645,6 +645,12 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func, bool is_in
         TraceRenderState(is_indexed, "no-pipeline", nullptr);
         return;
     }
+    // EDEN_NX2_ASYNC_SKIP=1: a native draw whose pipeline is still building is skipped for this
+    // frame (counted as submitted, so it isn't reported as a failed native draw).
+    if (pipeline_cache.SkipUnbuiltNativeDraw(pipeline)) {
+        submitted = true;
+        return;
+    }
     // Task/mesh pipelines: the draw's vertex count is the number of task workgroups.
     mesh_draw = pipeline->IsMeshPipeline();
     // EDEN_NX2_NO_MESH=1: skip task/mesh draws as before they were supported (A/B comparisons).

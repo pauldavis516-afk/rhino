@@ -36,3 +36,17 @@ EDEN_NX2_FENCE_BATCH=1
 #EDEN_NX2_SPLIT_SKIP=1
 #EDEN_NX2_AUTO_STUB=1
 #EDEN_NX2_KEEP_ASTC=1
+
+# --- rhino speed switches (all off unless set to 1; try one at a time) ---
+# Skip a native draw while its shader is still compiling, instead of stalling (less stutter).
+#EDEN_NX2_ASYNC_SKIP=1
+# Skip the GPU drain when a semaphore's value is already met in memory (fewer stalls).
+#EDEN_NX2_ACQUIRE_PEEK=1
+# Run the emulator at high process priority (Windows).
+#EDEN_NX2_HIGH_PRIORITY=1
+# Present every 2nd vblank: a steady 30 fps cap at 60 Hz.
+#EDEN_NX2_SWAP_INTERVAL=2
+# Lichii's draw reuse (1) or delta draws (2), vertex upload skips, and cache invalidation shortcuts.
+#EDEN_NX2_FAST_DRAW=1
+#EDEN_NX2_BUFFER_SKIP=1
+#EDEN_NX2_INLINE_INVALIDATE=1

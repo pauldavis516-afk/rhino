@@ -63,6 +63,19 @@ void DrainBack() {
     VideoCommon::GpuSplit::Get().Drain(VideoCommon::DrainSite::Acquire);
 }
 
+// EDEN_NX2_ACQUIRE_PEEK=1 (from selevet-eglantine's performance build): with the split active, an
+// acquire whose value is already in guest memory skips the drain. Work after it still runs on the
+// back after everything queued before it, and these semaphores count up, so a met value is not
+// taken back by a queued release. Off by default (an AcquireEqual a queued release changes again
+// is the case this trusts).
+bool PeekAcquire() {
+    static const bool enabled = [] {
+        const char* value = std::getenv("EDEN_NX2_ACQUIRE_PEEK");
+        return value != nullptr && value[0] == '1';
+    }();
+    return enabled && VideoCommon::GpuSplit::Get().Active();
+}
+
 // The fence manager records into the scheduler and downloads the CPU's writes over GPU data:
 // the back's state, which a drained back still uses from its idle hook (it submits).
 void ReleaseFences(DmaPusher& dma_pusher) {
@@ -88,6 +101,11 @@ bool Puller::PendingAcquire::Matches(u32 current) const {
 
 bool Puller::CanResumeAcquire(DmaPusher& dma_pusher) {
     if (!pending_acquire) {
+        return true;
+    }
+    if (PeekAcquire() &&
+        (Nx2SemaphoreWaiters::Get().Latched(this) ||
+         pending_acquire->Matches(dma_pusher.memory_manager.Read<u32>(pending_acquire->address)))) {
         return true;
     }
     // The release may still be queued for the split GPU thread's back half (and the caches
@@ -256,6 +274,9 @@ void Puller::ProcessSemaphoreTriggerMethod(DmaPusher& dma_pusher) {
             return;
         }
         VideoCommon::Nx2Profile::Add(VideoCommon::Nx2Profile::Counter::AcquireChecks, 1);
+        if (PeekAcquire() && acquire.Matches(dma_pusher.memory_manager.Read<u32>(acquire.address))) {
+            return;
+        }
         DrainBack();
         if (acquire.Matches(ReadSemaphoreWord(dma_pusher, acquire.address))) {
             return;

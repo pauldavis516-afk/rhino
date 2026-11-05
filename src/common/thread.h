@@ -115,4 +115,7 @@ void SetCurrentThreadToAllCores();
 void RefreshThreadPolicies();
 void PollThreadPolicies();
 
+/// Windows: raises the process to high priority when EDEN_NX2_HIGH_PRIORITY=1 is set.
+void SetProcessHighPriorityIfRequested();
+
 } // namespace Common

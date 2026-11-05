@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <chrono>
+#include <cstdlib>
 #include <limits>
 #include <string>
 #include <thread>
@@ -728,5 +729,16 @@ bool Event::WaitFor(const std::chrono::nanoseconds time) {
 #endif
 }
 #endif
+
+void SetProcessHighPriorityIfRequested() {
+#ifdef _WIN32
+    // EDEN_NX2_HIGH_PRIORITY=1 (from selevet-eglantine's performance build): run the whole process
+    // at high priority, so other programs' threads preempt the emulator's less. Off by default.
+    const char* value = std::getenv("EDEN_NX2_HIGH_PRIORITY");
+    if (value != nullptr && value[0] == '1') {
+        SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+    }
+#endif
+}
 
 } // namespace Common
